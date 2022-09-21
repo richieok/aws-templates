@@ -3,6 +3,10 @@ Parameters:
     Description: "AMI for EC2"
     Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
     Default: '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2'
+  KeyName:
+    Description: Name of an existing EC2 KeyPair to enable SSH access to the instance
+    Type: 'AWS::EC2::KeyPair::KeyName'
+    ConstraintDescription: Can contain only ASCII characters.
 Resources:
   InstanceSecurityGroup:
     Type: 'AWS::EC2::SecurityGroup'
@@ -28,7 +32,8 @@ Resources:
         config:
           packages:
             yum:
-              httpd: []
+              nginx: []
+              git: []
           files:
             /etc/cfn/cfn-hup.conf:
               content: !Sub |
@@ -62,14 +67,14 @@ Resources:
                 files:
                   - /etc/cfn/cfn-hup.conf
                   - /etc/cfn/hooks.d/cfn-auto-reloader.conf
-              httpd:
-                enabled: "true"
-                ensureRunning: "true"
-                files:
-                  - "/var/www/html/index.html"
+              # httpd:
+              #   enabled: "true"
+              #   ensureRunning: "true"
+              #   files:
+              #     - "/var/www/html/index.html"
     CreationPolicy:
       ResourceSignal:
-        Timeout: PT15M
+        Timeout: PT12M
     Properties:
       InstanceType: "t2.micro"
       ImageId: !Ref "LatestAmiId"
@@ -77,7 +82,7 @@ Resources:
         - !Ref InstanceSecurityGroup
       Tags:
         - Key: Name
-          Value: A4L-UserData Test
+          Value: My-Template-Test
       UserData:
         Fn::Base64: !Sub |
           #!/bin/bash -xe
