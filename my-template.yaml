@@ -58,9 +58,24 @@ Resources:
                 files:
                   - /etc/cfn/cfn-hup.conf
                   - /etc/cfn/hooks.d/cfn-auto-reloader.conf
+          commands:
+            stage1:
+              command: "echo \"$PARAM1\" > test.txt"
+              env:
+                PARAM1: "nginx installation is hard"
+              cwd: "~"
+              test: "test ! -e ~/test.txt"
+              ignoreErrors : "false"
+            stage2:
+              command: "echo '$PARAM2' > test2.txt"
+              env:
+                PARAM2: "STILL difficult"
+              cwd: "~"
+              test: "test ! -e ~/test2.txt"
+              ignoreErrors : "false"
     CreationPolicy:
       ResourceSignal:
-        Timeout: PT7M
+        Timeout: PT5M
         Count: 1
     Properties:
       InstanceType: "t2.micro"
@@ -76,3 +91,7 @@ Resources:
           yum install -y aws-cfn-bootstrap
           /opt/aws/bin/cfn-init -v --stack ${AWS::StackId} --resource Instance --region ${AWS::Region}
           /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackId} --resource Instance --region ${AWS::Region}
+Outputs:
+  WebsiteURL:
+    Description: URL for my template
+    Value: !Join ['', [ 'http://', !GetAtt [ Instance, PublicDnsName ]]]
