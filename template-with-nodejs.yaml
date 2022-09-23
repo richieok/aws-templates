@@ -1,0 +1,140 @@
+Parameters:
+  LatestAmiId:
+    Description: "AMI for EC2"
+    Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+    Default: '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2'
+  User:
+    Description: "User"
+    Type: 'String'
+    Default: 'ec2-user'
+Resources:
+  InstanceSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: Enable SSH and HTTP access via port 22 IPv4 & port 80 IPv4
+      SecurityGroupIngress:
+        - Description: 'Allow SSH IPv4 IN'
+          IpProtocol: tcp
+          FromPort: '22'
+          ToPort: '22'
+          CidrIp: '0.0.0.0/0'
+        - Description: 'Allow HTTP IPv4 IN'
+          IpProtocol: tcp
+          FromPort: '80'
+          ToPort: '80'
+          CidrIp: '0.0.0.0/0'
+        - Description: 'Allow HTTP IPv4 IN'
+          IpProtocol: tcp
+          FromPort: '3000'
+          ToPort: '3000'
+          CidrIp: '0.0.0.0/0'
+  Bucket:
+    Type: 'AWS::S3::Bucket'
+  Instance:
+    Type: 'AWS::EC2::Instance'
+    Metadata:
+      'AWS::CloudFormation::Init':
+        configSets:
+          Conf1InstalConf2:
+            - Config1
+            - Install
+            - Config2
+        Config1:
+          commands:
+            01stage:
+              command: "curl -sL https://rpm.nodesource.com/setup_lts.x | sudo bash -"
+              cwd: "/home/ec2-user"
+        Install:
+          packages:
+            yum:
+              git: []
+              nodejs: []
+          files:
+            /etc/cfn/cfn-hup.conf:
+              content: !Sub |
+                [main]
+                stack=${AWS::StackName}
+                region=${AWS::Region}
+                interval=1
+                verbose=true
+              mode: '000400'
+              owner: 'root'
+              group: 'root'
+            /etc/cfn/hooks.d/cfn-auto-reloader.conf:
+              content: !Sub |
+                [cfn-auto-reloader-hook]
+                triggers=post.update
+                path=Resources.Instance.Metadata.AWS::CloudFormation::Init
+                action=/opt/aws/bin/cfn-init -v --stack ${AWS::StackId} --resource Instance --configsets Conf1InstalConf2 --region ${AWS::Region}
+                runas=root
+              mode: '000400'
+              owner: 'root'
+              group: 'root'
+          services:
+            sysvinit:
+              cfn-hup:
+                enabled: "true"
+                ensureRunning: "true"
+                files:
+                  - /etc/cfn/cfn-hup.conf
+                  - /etc/cfn/hooks.d/cfn-auto-reloader.conf
+        Config2:
+          commands:
+            01line:
+              command: "git clone https://github.com/richieok/app1.git"
+              cwd: "/home/ec2-user"
+            02line:
+              command: "sudo npm install -g npm@latest"
+              cwd: "/home/ec2-user/app1"
+            03line:
+              command: "sudo npm install"
+              cwd: "/home/ec2-user/app1"
+            04line:
+              command: "sudo npm run build"
+              cwd: "/home/ec2-user/app1"
+            05line:
+              command: "sudo chmod +x server.js"
+              cwd: "/home/ec2-user/app1"
+          files:
+            /etc/systemd/system/app1.service:
+              content: !Sub |
+                [Unit]
+                Description=App1 Qubit node server
+
+                [Service]
+                ExecStart=/home/${User}/app1/server.js
+                Restart=always
+                # User=nobody
+                # Group=nogroup
+                Environment=PATH=/usr/bin:/usr/local/bin
+                Environment=NODE_ENV=production
+                WorkingDirectory=/home/${User}/app1
+                [Install]
+                WantedBy=multi-user.target
+          services:
+            systemd:
+              app1:
+                ensureRunning: "true"
+                enabled: "true"
+    CreationPolicy:
+      ResourceSignal:
+        Timeout: PT5M
+        Count: 1
+    Properties:
+      InstanceType: "t2.micro"
+      ImageId: !Ref "LatestAmiId"
+      SecurityGroupIds: 
+        - !Ref InstanceSecurityGroup
+      Tags:
+        - Key: "Name"
+          Value: "My-Template-Test"
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash -xe
+          yum install -y aws-cfn-bootstrap
+          /opt/aws/bin/cfn-init -v --stack ${AWS::StackId} --resource Instance --configsets Conf1InstalConf2 --region ${AWS::Region}
+          /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackId} --resource Instance --region ${AWS::Region}
+Outputs:
+  WebsiteURL:
+    Description: URL for my template
+    Value: !Join ['', [ 'http://', !GetAtt [ Instance, PublicDnsName ], ':3000']]
