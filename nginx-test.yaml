@@ -8,6 +8,10 @@ Parameters:
     Type: 'String'
     Default: 'ec2-user'
 Resources:
+  AssociateWebport:
+    Type: "AWS::EC2::EIPAssociation"
+    Properties:
+      AllocationId: eipalloc-03c919700ddd53e16
   InstanceSecurityGroup:
     Type: 'AWS::EC2::SecurityGroup'
     Properties:

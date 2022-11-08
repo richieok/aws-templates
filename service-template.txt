@@ -1,0 +1,35 @@
+[Unit]
+Description=Test template server
+
+[Service]
+ExecStart=/home/ec2-user/app1/server.js
+Restart=always
+User=nobody
+# Note Debian/Ubuntu uses 'nogroup', RHEL/Fedora uses 'nobody'
+Group=nogroup
+Environment=PATH=/usr/bin:/usr/local/bin
+Environment=NODE_ENV=production
+WorkingDirectory=/home/ec2-user/app1
+
+[Install]
+WantedBy=multi-user.target
+
+===
+
+[Unit]
+Description=Qubit v 1
+After=multi-user.target
+
+[Service]
+ExecStart=/home/ec2-user/app1/server.js
+Restart=always
+RestartSec=10
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=QubitAppID
+User=ec2-user
+WorkingDirectory=/home/ec2-user/app1
+#EnvironmentFile=/home/ec2-user/your_app_dir/app.env
+
+[Install]
+WantedBy=multi-user.target
