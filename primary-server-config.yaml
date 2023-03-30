@@ -11,7 +11,7 @@ Parameters:
       - 'test'
       - 'prod'
   GitFolder:
-    Default: "qv0.2-25-10-2022"
+    Default: "q1.0-14-12-22"
     Type: "String"
 Resources:
   EIPAssociation:
@@ -34,16 +34,16 @@ Resources:
           FromPort: '80'
           ToPort: '80'
           CidrIp: '0.0.0.0/0'
-        - Description: 'Allow HTTP IPv4 IN ON PORT 3000'
-          IpProtocol: tcp
-          FromPort: '3000'
-          ToPort: '3000'
-          CidrIp: '0.0.0.0/0'
         - Description: 'Allow HTTPS IPv4'
           IpProtocol: tcp
           FromPort: '443'
           ToPort: '443'
           CidrIp: '0.0.0.0/0'
+        # - Description: 'Allow HTTP IPv4 IN ON PORT 3000'
+        #   IpProtocol: tcp
+        #   FromPort: '3000'
+        #   ToPort: '3000'
+        #   CidrIp: '0.0.0.0/0'
   Server:
     Type: 'AWS::EC2::Instance'
     CreationPolicy:

@@ -1,0 +1,65 @@
+{
+    "Parameters": {
+        "LatestAmiId":{
+            "Description": "AMI for EC2",
+            "Type": "AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>",
+            "Default": "/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2"
+        },
+        "GitFolder":{
+            "Default": "q1.0-14-12-22",
+            "Type": "String",
+            "Description": "Application Github folder",
+            "AllowedValues": ["q1.0-14-12-22","qv0.3-15-11-2022"]
+        }
+    },
+    "Resources": {
+        "SecGroup": {
+            "Type": "AWS::EC2::SecurityGroup",
+            "Properties": {
+                "GroupDescription": "Enable SSH and HTTP access via port 22 IPv4 & port 80 IPv4",
+                "SecurityGroupIngress": [
+                    {
+                        "Description": "Allow SSH IPv4 IN",
+                        "IpProtocol": "tcp",
+                        "FromPort": "22",
+                        "ToPort": "22",
+                        "CidrIp": "0.0.0.0/0"
+                    },
+                    {
+                        "Description": "Allow HTTP IPv4 IN",
+                        "IpProtocol": "tcp",
+                        "FromPort": "80",
+                        "ToPort": "80",
+                        "CidrIp": "0.0.0.0/0"
+                    },
+                    {
+                        "Description": "Allow HTTPS IPv4",
+                        "IpProtocol": "tcp",
+                        "FromPort": "443",
+                        "ToPort": "443",
+                        "CidrIp": "0.0.0.0/0"
+                    }
+                ]
+            }
+        },
+        "Server": {
+            "Properties": {
+                "InstanceType": "t2.micro",
+                "ImageId": {"Ref": "LatestAmiId"},
+                "SecurityGroupIds": {"Ref": "SecGroup"},
+                "Tags": [
+                    {
+                        "Key": "Name",
+                        "Value": "Server-Name"
+                    }
+                ]
+            }
+        }
+    },
+    "Outputs": {
+        "URL": {
+            "Description": "Instance URL",
+            "Value": {"Fn::Join": ["", ["http://", {"Fn::GetAtt": ["Server", "PublicDnsName"]}]]}
+        }
+    }
+}
