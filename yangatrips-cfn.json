@@ -1,0 +1,213 @@
+{
+    "Parameters": {
+        "LatestAmiId": {
+            "Description": "AMI for EC2",
+            "Type": "AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>",
+            "Default": "/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2"
+        },
+        "GitFolder": {
+            "Type": "String",
+            "Description": "Application Github folder",
+            "Default": "yangatrips-v"
+        },
+        "TagName": {
+            "Type": "String",
+            "Description": "Tag Name",
+            "Default": "Yanga Server"
+        }
+    },
+    "Resources": {
+        "EIPAssociation": {
+            "Type": "AWS::EC2::EIPAssociation",
+            "Properties": {
+                "AllocationId": "eipalloc-05b4a297616a2fa85",
+                "InstanceId": {
+                    "Ref": "Server"
+                }
+            }
+        },
+        "SecGroup": {
+            "Type": "AWS::EC2::SecurityGroup",
+            "Properties": {
+                "GroupDescription": "Enable SSH and HTTP access via port 22 IPv4 & port 80 IPv4",
+                "SecurityGroupIngress": [
+                    {
+                        "Description": "Allow SSH IPv4 IN",
+                        "IpProtocol": "tcp",
+                        "FromPort": "22",
+                        "ToPort": "22",
+                        "CidrIp": "0.0.0.0/0"
+                    },
+                    {
+                        "Description": "Allow HTTP IPv4 IN",
+                        "IpProtocol": "tcp",
+                        "FromPort": "80",
+                        "ToPort": "80",
+                        "CidrIp": "0.0.0.0/0"
+                    },
+                    {
+                        "Description": "Allow HTTP IPv4 IN",
+                        "IpProtocol": "tcp",
+                        "FromPort": "8080",
+                        "ToPort": "8080",
+                        "CidrIp": "0.0.0.0/0"
+                    },
+                    {
+                        "Description": "Allow HTTP IPv4 IN",
+                        "IpProtocol": "tcp",
+                        "FromPort": "443",
+                        "ToPort": "443",
+                        "CidrIp": "0.0.0.0/0"
+                    }
+                ]
+            }
+        },
+        "Server": {
+            "Type": "AWS::EC2::Instance",
+            "CreationPolicy": {
+                "ResourceSignal": {
+                    "Timeout": "PT4M",
+                    "Count": 1
+                }
+            },
+            "Metadata": {
+                "AWS::CloudFormation::Init": {
+                    "configSets": {
+                        "InstallAndRun": [
+                            "Install1",
+                            "Install2",
+                            "StartNodeService"
+                        ]
+                    },
+                    "Install1": {
+                        "packages": {
+                            "yum": {
+                                "git": []
+                            }
+                        },
+                        "files": {
+                            "/etc/cfn/cfn-hup.conf": {
+                                "content": {
+                                    "Fn::Sub": "[main]\nstack=${AWS::StackName}\nregion=${AWS::Region}\ninterval=1\nverbose=true\n"
+                                },
+                                "mode": "000400",
+                                "owner": "root",
+                                "group": "root"
+                            },
+                            "/etc/cfn/hooks.d/cfn-auto-reloader.conf": {
+                                "content": {
+                                    "Fn::Sub": "[cfn-auto-reloader-hook]\ntriggers=post.update\npath=Resources.Server.Metadata.AWS::CloudFormation::Init\naction=/opt/aws/bin/cfn-init -v --stack ${AWS::StackId} --resource Server --configsets InstallAndRun --region ${AWS::Region}\nrunas=root\n"
+                                },
+                                "mode": "000400",
+                                "owner": "root",
+                                "group": "root"
+                            }
+                        },
+                        "services": {
+                            "sysvinit": {
+                                "cfn-hup": {
+                                    "enabled": "true",
+                                    "ensureRunning": "true",
+                                    "files": [
+                                        "/etc/cfn/cfn-hup.conf",
+                                        "/etc/cfn/hooks.d/cfn-auto-reloader.conf"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "Install2": {
+                        "commands": {
+                            "01stage": {
+                                "command": "curl -sL https://rpm.nodesource.com/setup_16.x | sudo bash -",
+                                "cwd": "/home/ec2-user"
+                            },
+                            "02stage": {
+                                "command": "sudo yum install -y nodejs",
+                                "cwd": "/home/ec2-user"
+                            },
+                            "03stage": {
+                                "command": {
+                                    "Fn::Sub": "git clone https://github.com/richieok/${GitFolder}.git"
+                                },
+                                "cwd": "/home/ec2-user"
+                            },
+                            "04stage": {
+                                "command": "npm i && npm run build",
+                                "cwd": {
+                                    "Fn::Sub": "/home/ec2-user/${GitFolder}"
+                                }
+                            },
+                            "05stage": {
+                                "command": "sudo chmod +x server.js",
+                                "cwd": {
+                                    "Fn::Sub": "/home/ec2-user/${GitFolder}"
+                                }
+                            }
+                        }
+                    },
+                    "StartNodeService": {
+                        "files": {
+                            "/etc/systemd/system/app1.service": {
+                                "content": {
+                                    "Fn::Sub": "[Unit]\nDescription=General Build\nAfter=multi-user.target\n\n[Service]\nExecStart=/home/ec2-user/${GitFolder}/server.js\nRestart=always\nRestartSec=10\nStandardOutput=syslog\nStandardError=syslog\nSyslogIdentifier=QubitAppID\nUser=ec2-user\nWorkingDirectory=/home/ec2-user/${GitFolder}\n#EnvironmentFile=/home/ec2-user/${GitFolder}/app.env\n\n[Install]\nWantedBy=multi-user.target\n"
+                                }
+                            }
+                        },
+                        "services": {
+                            "systemd": {
+                                "app1": {
+                                    "ensureRunning": "true",
+                                    "enabled": "true"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "Properties": {
+                "InstanceType": "t2.micro",
+                "ImageId": {
+                    "Ref": "LatestAmiId"
+                },
+                "SecurityGroupIds": [
+                    {
+                        "Ref": "SecGroup"
+                    }
+                ],
+                "Tags": [
+                    {
+                        "Key": "Name",
+                        "Value": {
+                            "Ref": "TagName"
+                        }
+                    }
+                ],
+                "UserData": {
+                    "Fn::Base64": {
+                        "Fn::Sub": "#!/bin/bash -xe\nyum install -y aws-cfn-bootstrap\nsudo yum update -y\n/opt/aws/bin/cfn-init -v --stack ${AWS::StackId} --resource Server --configsets InstallAndRun --region ${AWS::Region}\n/opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackId} --resource Server --region ${AWS::Region}\n"
+                    }
+                }
+            }
+        }
+    },
+    "Outputs": {
+        "URL": {
+            "Description": "Instance URL",
+            "Value": {
+                "Fn::Join": [
+                    "",
+                    [
+                        "http://",
+                        {
+                            "Fn::GetAtt": [
+                                "Server",
+                                "PublicDnsName"
+                            ]
+                        }
+                    ]
+                ]
+            }
+        }
+    }
+}

@@ -1,0 +1,169 @@
+{
+    "Parameters": {
+        "LatestAmiId": {
+            "Description": "AMI for EC2",
+            "Type": "AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>",
+            "Default": "/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2"
+        },
+        "GitFolder": {
+            "Type": "String",
+            "Description": "Application Github folder"
+        },
+        "Domain": {
+            "Type": "String",
+            "Description": "The name of your domain"
+        },
+        "TagName": {
+            "Type": "String",
+            "Description": "Tag Name",
+            "Default": ""
+        }
+    },
+    "Resources": {
+        "SecGroup": {
+            "Type": "AWS::EC2::SecurityGroup",
+            "Properties": {
+                "GroupDescription": "Enable SSH and HTTP access via port 22 IPv4 & port 80 IPv4",
+                "SecurityGroupIngress": [
+                    {
+                        "Description": "Allow SSH IPv4 IN",
+                        "IpProtocol": "tcp",
+                        "FromPort": "22",
+                        "ToPort": "22",
+                        "CidrIp": "0.0.0.0/0"
+                    },
+                    {
+                        "Description": "Allow HTTP IPv4 IN",
+                        "IpProtocol": "tcp",
+                        "FromPort": "80",
+                        "ToPort": "80",
+                        "CidrIp": "0.0.0.0/0"
+                    }
+                ]
+            }
+        },
+        "Server": {
+            "Type": "AWS::EC2::Instance",
+            "CreationPolicy": {
+                "ResourceSignal": {
+                    "Timeout": "PT4M",
+                    "Count": 1
+                }
+            },
+            "Metadata": {
+                "AWS::CloudFormation::Init": {
+                    "configSets": {
+                        "InstallAndRun": [
+                            "Install1",
+                            "Install2"
+                        ]
+                    },
+                    "Install1": {
+                        "packages": {
+                            "yum": {
+                                "git": []
+                            }
+                        },
+                        "files": {
+                            "/etc/cfn/cfn-hup.conf": {
+                                "content": {
+                                    "Fn::Sub": "[main]\nstack=${AWS::StackName}\nregion=${AWS::Region}\ninterval=1\nverbose=true\n"
+                                },
+                                "mode": "000400",
+                                "owner": "root",
+                                "group": "root"
+                            },
+                            "/etc/cfn/hooks.d/cfn-auto-reloader.conf": {
+                                "content": {
+                                    "Fn::Sub": "[cfn-auto-reloader-hook]\ntriggers=post.update\npath=Resources.Server.Metadata.AWS::CloudFormation::Init\naction=/opt/aws/bin/cfn-init -v --stack ${AWS::StackId} --resource Server --configsets InstallAndRun --region ${AWS::Region}\nrunas=root\n"
+                                },
+                                "mode": "000400",
+                                "owner": "root",
+                                "group": "root"
+                            }
+                        },
+                        "services": {
+                            "sysvinit": {
+                                "cfn-hup": {
+                                    "enabled": "true",
+                                    "ensureRunning": "true",
+                                    "files": [
+                                        "/etc/cfn/cfn-hup.conf",
+                                        "/etc/cfn/hooks.d/cfn-auto-reloader.conf"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "Install2": {
+                        "commands": {
+                            "01stage": {
+                                "command": "curl -sL https://rpm.nodesource.com/setup_16.x | sudo bash -",
+                                "cwd": "/home/ec2-user"
+                            },
+                            "02stage": {
+                                "command": "sudo yum install -y nodejs",
+                                "cwd": "/home/ec2-user"
+                            },
+                            "03stage": {
+                                "command": {
+                                    "Fn::Sub": "git clone https://github.com/richieok/${GitFolder}.git"
+                                },
+                                "cwd": "/home/ec2-user"
+                            },
+                            "04stage": {
+                                "command": "npm i",
+                                "cwd": {
+                                    "Fn::Sub": "/home/ec2-user/${GitFolder}"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "Properties": {
+                "InstanceType": "t2.micro",
+                "ImageId": {
+                    "Ref": "LatestAmiId"
+                },
+                "SecurityGroupIds": [
+                    {
+                        "Ref": "SecGroup"
+                    }
+                ],
+                "Tags": [
+                    {
+                        "Key": "Name",
+                        "Value": {
+                            "Ref": "TagName"
+                        }
+                    }
+                ],
+                "UserData": {
+                    "Fn::Base64": {
+                        "Fn::Sub": "#!/bin/bash -xe\nyum install -y aws-cfn-bootstrap\n# sudo yum install -y gcc-c++ make\nsudo yum update -y\n/opt/aws/bin/cfn-init -v --stack ${AWS::StackId} --resource Server --configsets InstallAndRun --region ${AWS::Region}\n/opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackId} --resource Server --region ${AWS::Region}\n"
+                    }
+                }
+            }
+        }
+    },
+    "Outputs": {
+        "URL": {
+            "Description": "Instance URL",
+            "Value": {
+                "Fn::Join": [
+                    "",
+                    [
+                        "http://",
+                        {
+                            "Fn::GetAtt": [
+                                "Server",
+                                "PublicDnsName"
+                            ]
+                        }
+                    ]
+                ]
+            }
+        }
+    }
+}

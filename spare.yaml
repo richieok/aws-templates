@@ -14,11 +14,6 @@ Parameters:
     Description: "Tag Name"
     Default: ""
 Resources:
-  # EIPAssociation:
-  #   Type: AWS::EC2::EIPAssociation
-  #   Properties:
-  #     AllocationId: eipalloc-03c919700ddd53e16
-  #     InstanceId: !Ref Server
   SecGroup:
     Type: 'AWS::EC2::SecurityGroup'
     Properties:
@@ -34,21 +29,6 @@ Resources:
           FromPort: '80'
           ToPort: '80'
           CidrIp: '0.0.0.0/0'
-        - Description: 'Allow HTTP IPv4 IN'
-          IpProtocol: tcp
-          FromPort: '8080'
-          ToPort: '8080'
-          CidrIp: '0.0.0.0/0'
-        - Description: 'Allow HTTPS IPv4'
-          IpProtocol: tcp
-          FromPort: '443'
-          ToPort: '443'
-          CidrIp: '0.0.0.0/0'
-        # - Description: 'Allow HTTP IPv4 IN ON PORT 3000'
-        #   IpProtocol: tcp
-        #   FromPort: '3000'
-        #   ToPort: '3000'
-        #   CidrIp: '0.0.0.0/0'
   Server:
     Type: 'AWS::EC2::Instance'
     CreationPolicy:
@@ -61,14 +41,10 @@ Resources:
           InstallAndRun:
             - Install1
             - Install2
-            - StartNodeService
-            - ConfigNginx
-            # - InstallCertBot
         Install1:
           packages:
             yum:
               git: []
-              nginx: []
           files:
             /etc/cfn/cfn-hup.conf:
               content: !Sub |
@@ -111,71 +87,8 @@ Resources:
               cwd: "/home/ec2-user"
               # ignoreErrors: 'true'
             04stage:
-              command: "npm i && npm run build"
+              command: "npm i"
               cwd: !Sub "/home/ec2-user/${GitFolder}"
-            05stage:
-              command: "sudo chmod +x server.js"
-              cwd: !Sub "/home/ec2-user/${GitFolder}"
-        StartNodeService:
-          files:
-            /etc/systemd/system/app1.service:
-              content: !Sub |
-                [Unit]
-                Description=General Build
-                After=multi-user.target
-
-                [Service]
-                ExecStart=/home/ec2-user/${GitFolder}/server.js
-                Restart=always
-                RestartSec=10
-                StandardOutput=syslog
-                StandardError=syslog
-                SyslogIdentifier=QubitAppID
-                User=ec2-user
-                WorkingDirectory=/home/ec2-user/${GitFolder}
-                #EnvironmentFile=/home/ec2-user/${GitFolder}/app.env
-
-                [Install]
-                WantedBy=multi-user.target
-          services:
-            systemd:
-              app1:
-                ensureRunning: "true"
-                enabled: "true"
-        ConfigNginx:
-          files:
-            /etc/nginx/conf.d/new_sites.conf:
-              content: !Sub |
-                server {
-                  listen 80 default_server;
-                  server_name ${Domain} www.${Domain}; #change _ to wesite url www url
-                  
-                  location / {
-                    proxy_set_header X-Real-IP $remote_addr;
-                    proxy_pass http://localhost:3000;
-                    proxy_set_header Upgrade $http_upgrade;
-                    proxy_set_header Connection 'upgrade';
-                    proxy_set_header Host $host;
-                    proxy_cache_bypass $http_upgrade;
-                  }
-                }
-          services:
-            systemd:
-              nginx:
-                enabled: "true"
-                ensureRunning: "true"
-        # InstallCertBot:
-        #   commands:
-        #     cmd01:
-        #       command: "sudo yum install augeas-libs -y"
-        #     cmd02:
-        #       command: "sudo python3 -m venv /opt/certbot/"
-        #     cmd03:
-        #       command: "sudo /opt/certbot/bin/pip install --upgrade pip"
-        #     cmd04:
-        #       command: "sudo /opt/certbot/bin/pip install certbot certbot-nginx"
-        #     cmd05:
-        #       command: "sudo ln -s /opt/certbot/bin/certbot /usr/bin/certbot"
     Properties:
       InstanceType: "t2.micro"
       ImageId: !Ref "LatestAmiId"
@@ -191,7 +104,6 @@ Resources:
           yum install -y aws-cfn-bootstrap
           # sudo yum install -y gcc-c++ make
           sudo yum update -y
-          sudo amazon-linux-extras install nginx1 -y
           /opt/aws/bin/cfn-init -v --stack ${AWS::StackId} --resource Server --configsets InstallAndRun --region ${AWS::Region}
           /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackId} --resource Server --region ${AWS::Region}
 Outputs:

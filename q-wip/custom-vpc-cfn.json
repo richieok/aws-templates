@@ -1,0 +1,394 @@
+{
+    "Parameters": {
+        "LatestAmiId": {
+            "Description": "AMI for EC2",
+            "Type": "AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>",
+            "Default": "/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2"
+        },
+        "GitFolder": {
+            "Default": "q1.0-14-12-22",
+            "Type": "String",
+            "Description": "Application Github folder",
+            "AllowedValues": [
+                "q1.0-14-12-22",
+                "qv0.3-15-11-2022"
+            ]
+        },
+        "AppTargetPort": {
+            "Description": "Target Port the load balancer forwards traffic to",
+            "Type": "String",
+            "Default": "3000"
+        }
+    },
+    "Resources": {
+        "CustomVPC": {
+            "Type": "AWS::EC2::VPC",
+            "Properties": {
+                "CidrBlock": "10.64.0.0/16",
+                "EnableDnsHostnames": true,
+                "EnableDnsSupport": true
+            }
+        },
+        "InternetGateway": {
+            "Type": "AWS::EC2::InternetGateway"
+        },
+        "VPCGatewayAttachment": {
+            "Type": "AWS::EC2::VPCGatewayAttachment",
+            "Properties": {
+                "VpcId": {"Ref": "CustomVPC"},
+                "InternetGatewayId": {"Ref": "InternetGateway"}
+            }
+        },
+        "RouteTable": {
+            "Type": "AWS::EC2::RouteTable",
+            "Properties": {
+                "VpcId" : { "Ref" : "CustomVPC" },
+                "Tags": [{"Key": "Name", "Value": "myRouteTable"}]
+            }
+        },
+        "InternetRoute": {
+            "Type": "AWS::EC2::Route",
+            "DependsOn": "VPCGatewayAttachment",
+            "Properties": {
+                "RouteTableId": { "Ref": "RouteTable" },
+                "DestinationCidrBlock": "0.0.0.0/0",
+                "GatewayId": { "Ref": "InternetGateway" }
+            }
+        },
+        "Subnet1RouteTableAssociation": {
+            "Type": "AWS::EC2::SubnetRouteTableAssociation",
+            "Properties": {
+                "SubnetId": { "Ref": "PublicSubnet1" },
+                "RouteTableId": { "Ref": "RouteTable" }
+            }
+        },
+        "PublicSubnet1": {
+            "Type": "AWS::EC2::Subnet",
+            "Properties": {
+                "VpcId": {"Ref": "CustomVPC"},
+                "CidrBlock": "10.64.0.0/20",
+                "AvailabilityZone": { "Fn::Select": [ 0, {"Fn::GetAZs": ""}]},
+                "MapPublicIpOnLaunch": true
+            }
+        },
+        "PublicSubnet2": {
+            "Type": "AWS::EC2::Subnet",
+            "Properties": {
+                "VpcId": {
+                    "Ref": "CustomVPC"
+                },
+                "CidrBlock": "10.64.16.0/20",
+                "AvailabilityZone": { "Fn::Select": [ 1, {"Fn::GetAZs": ""}]},
+                "MapPublicIpOnLaunch": true
+            }
+        },
+        "PrivateSubnet1": {
+            "Type": "AWS::EC2::Subnet",
+            "Properties": {
+                "VpcId": {
+                    "Ref": "CustomVPC"
+                },
+                "CidrBlock": "10.64.32.0/20",
+                "AvailabilityZone": { "Fn::Select": [ 2, {"Fn::GetAZs": ""}]},
+                "MapPublicIpOnLaunch": false
+            }
+        },
+        "PrivateSubnet2": {
+            "Type": "AWS::EC2::Subnet",
+            "Properties": {
+                "VpcId": {
+                    "Ref": "CustomVPC"
+                },
+                "CidrBlock": "10.64.48.0/20",
+                "AvailabilityZone": { "Fn::Select": [ 3, {"Fn::GetAZs": ""}]},
+                "MapPublicIpOnLaunch": false
+            }
+        },
+        "SecGroup": {
+            "Type": "AWS::EC2::SecurityGroup",
+            "Properties": {
+                "GroupDescription": "Enable SSH and HTTP access via port 22 IPv4 & port 80 IPv4",
+                "GroupName": "MySecGroup",
+                "VpcId": { "Ref": "CustomVPC" },
+                "SecurityGroupIngress": [
+                    {
+                        "Description": "Allow SSH IPv4 IN",
+                        "IpProtocol": "tcp",
+                        "FromPort": "22",
+                        "ToPort": "22",
+                        "CidrIp": "0.0.0.0/0"
+                    },
+                    {
+                        "Description": "Application port",
+                        "IpProtocol": "tcp",
+                        "FromPort": "3000",
+                        "ToPort": "3000",
+                        "CidrIp": "0.0.0.0/0"
+                    }
+                ]
+            }
+        },
+        "LoadBalancerSecurityGroup": {
+            "Type": "AWS::EC2::SecurityGroup",
+            "Properties": {
+                "GroupDescription": "Load Balancer Security Group",
+                "VpcId": { "Ref": "CustomVPC" },
+                "SecurityGroupIngress": [
+                    {
+                        "CidrIp": "0.0.0.0/0",
+                        "FromPort": 80,
+                        "IpProtocol": "tcp",
+                        "ToPort": 80
+                    },
+                    {
+                        "CidrIp": "0.0.0.0/0",
+                        "FromPort": 443,
+                        "IpProtocol": "tcp",
+                        "ToPort": 443
+                    }
+                ]
+            }
+        },
+        "LoadBalancer": {
+            "Type": "AWS::ElasticLoadBalancingV2::LoadBalancer",
+            "Properties": {
+                "Name": "MyLoadBalancer",
+                "Scheme": "internet-facing",
+                "Subnets": [
+                    {
+                        "Ref": "PublicSubnet1"
+                    },
+                    {
+                        "Ref": "PublicSubnet2"
+                    }
+                ],
+                "SecurityGroups": [
+                    {
+                        "Ref": "LoadBalancerSecurityGroup"
+                    }
+                ],
+                "Type": "application"
+            }
+        },
+        "HTTPListener": {
+            "Type": "AWS::ElasticLoadBalancingV2::Listener",
+            "Properties": {
+                "LoadBalancerArn": { "Ref": "LoadBalancer" },
+                "Port": 80,
+                "Protocol": "HTTP",
+                "DefaultActions": [
+                    {
+                        "Order": 1,
+                        "TargetGroupArn": { "Ref": "TargetGroup1" },
+                        "Type": "forward"
+                    }
+                ]
+            }
+        },
+        "TargetGroup1": {
+            "Type": "AWS::ElasticLoadBalancingV2::TargetGroup",
+            "Properties": {
+                "Port": { "Ref": "AppTargetPort" },
+                "Protocol": "HTTP",
+                "VpcId": { "Ref": "CustomVPC" },
+                "Targets": [ 
+                    { 
+                        "Id": { "Ref": "Server" },
+                        "Port": 3000
+                    }
+                ]
+            }
+        },
+        "Server": {
+            "Type": "AWS::EC2::Instance",
+            "CreationPolicy": {
+                "ResourceSignal": {
+                    "Timeout": "PT4M",
+                    "Count": 1
+                }
+            },
+            "Metadata": {
+                "AWS::CloudFormation::Init": {
+                    "configSets": {
+                        "InstallAndRun": [
+                            "Install1",
+                            "Install2",
+                            "StartNodeService"
+                        ]
+                    },
+                    "Install1": {
+                        "packages": {
+                            "yum": {
+                                "git": []
+                            }
+                        },
+                        "files": {
+                            "/etc/cfn/cfn-hup.conf": {
+                                "content": {
+                                    "Fn::Sub": "[main]\nstack=${AWS::StackName}\nregion=${AWS::Region}\ninterval=1\nverbose=true\n"
+                                },
+                                "mode": "000400",
+                                "owner": "root",
+                                "group": "root"
+                            },
+                            "/etc/cfn/hooks.d/cfn-auto-reloader.conf": {
+                                "content": {
+                                    "Fn::Sub": "[cfn-auto-reloader-hook]\ntriggers=post.update\npath=Resources.Server.Metadata.AWS::CloudFormation::Init\naction=/opt/aws/bin/cfn-init -v --stack ${AWS::StackId} --resource Server --configsets InstallAndRun --region ${AWS::Region}\nrunas=root\n"
+                                },
+                                "mode": "000400",
+                                "owner": "root",
+                                "group": "root"
+                            }
+                        },
+                        "services": {
+                            "sysvinit": {
+                                "cfn-hup": {
+                                    "enabled": "true",
+                                    "ensureRunning": "true",
+                                    "files": [
+                                        "/etc/cfn/cfn-hup.conf",
+                                        "/etc/cfn/hooks.d/cfn-auto-reloader.conf"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "Install2": {
+                        "commands": {
+                            "01stage": {
+                                "command": "curl -sL https://rpm.nodesource.com/setup_16.x | sudo bash -",
+                                "cwd": "/home/ec2-user"
+                            },
+                            "02stage": {
+                                "command": "sudo yum install -y nodejs",
+                                "cwd": "/home/ec2-user"
+                            },
+                            "03stage": {
+                                "command": {
+                                    "Fn::Sub": "git clone https://github.com/richieok/${GitFolder}.git"
+                                },
+                                "cwd": "/home/ec2-user"
+                            },
+                            "04stage": {
+                                "command": "npm i && npm run build",
+                                "cwd": {
+                                    "Fn::Sub": "/home/ec2-user/${GitFolder}"
+                                }
+                            },
+                            "05stage": {
+                                "command": "sudo chmod +x server.js",
+                                "cwd": {
+                                    "Fn::Sub": "/home/ec2-user/${GitFolder}"
+                                }
+                            }
+                        }
+                    },
+                    "StartNodeService": {
+                        "files": {
+                            "/etc/systemd/system/app1.service": {
+                                "content": {
+                                    "Fn::Sub": "[Unit]\nDescription=Qubit v 1\nAfter=multi-user.target\n\n[Service]\nExecStart=/home/ec2-user/${GitFolder}/server.js\nRestart=always\nRestartSec=10\nStandardOutput=syslog\nStandardError=syslog\nSyslogIdentifier=QubitAppID\nUser=ec2-user\nWorkingDirectory=/home/ec2-user/${GitFolder}\n#EnvironmentFile=/home/ec2-user/${GitFolder}/app.env\n\n[Install]\nWantedBy=multi-user.target\n"
+                                }
+                            }
+                        },
+                        "services": {
+                            "systemd": {
+                                "app1": {
+                                    "ensureRunning": "true",
+                                    "enabled": "true"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "Properties": {
+                "InstanceType": "t2.micro",
+                "ImageId": {
+                    "Ref": "LatestAmiId"
+                },
+                "SecurityGroupIds": [
+                    {
+                        "Ref": "SecGroup"
+                    }
+                ],
+                "SubnetId": { "Ref": "PublicSubnet1" },
+                "IamInstanceProfile": {
+                    "Ref": "InstanceProfile"
+                },
+                "Tags": [
+                    {
+                        "Key": "Name",
+                        "Value": "CustomVPC Test"
+                    }
+                ],
+                "UserData": {
+                    "Fn::Base64": {
+                        "Fn::Sub": "#!/bin/bash -xe\nyum install -y aws-cfn-bootstrap\n# sudo yum install -y gcc-c++ make\nsudo yum update -y\nsudo amazon-linux-extras install nginx1 -y\n/opt/aws/bin/cfn-init -v --stack ${AWS::StackId} --resource Server --configsets InstallAndRun --region ${AWS::Region}\n/opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackId} --resource Server --region ${AWS::Region}\n"
+                    }
+                }
+            }
+        },
+        "InstanceRole": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "AssumeRolePolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": ["ec2.amazonaws.com"]
+                            },
+                            "Action": "sts:AssumeRole"
+                        }
+                    ]
+                },
+                "Path": "/",
+                "Policies": [
+                    {
+                        "PolicyName": "ssm-access",
+                        "PolicyDocument": {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {
+                                    "Effect": "Allow",
+                                    "Action": ["ssm:GetParameters", "ssm:GetParameter", "ssm:GetParametersByPath"],
+                                    "Resource": "arn:aws:ssm:us-east-1:848714340082:parameter/qubit-app/*"
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+        },
+        "InstanceProfile": {
+            "Type": "AWS::IAM::InstanceProfile",
+            "Properties": {
+                "Path": "/",
+                "Roles": [{
+                    "Ref": "InstanceRole"
+                }]
+            }
+        }
+    },
+    "Outputs": {
+        "URL": {
+            "Description": "Instance URL",
+            "Value": {
+                "Fn::Join": [
+                    "",
+                    [
+                        "http://",
+                        {
+                            "Fn::GetAtt": [
+                                "Server",
+                                "PublicDnsName"
+                            ]
+                        }
+                    ]
+                ]
+            }
+        }
+    }
+}

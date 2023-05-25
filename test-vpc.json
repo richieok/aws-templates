@@ -1,0 +1,131 @@
+{
+    "Resources": {
+        "MYVPC": {
+            "Type": "AWS::EC2::VPC",
+            "Properties": {
+                "CidrBlock": "10.64.0.0/16",
+                "EnableDnsHostnames": true,
+                "EnableDnsSupport": true
+            }
+        },
+        "InternetGateway": {
+            "Type": "AWS::EC2::InternetGateway"
+        },
+        "VPCGatewayAttachment": {
+            "Type": "AWS::EC2::VPCGatewayAttachment",
+            "Properties": {
+                "VpcId": {"Ref": "MYVPC"},
+                "InternetGatewayId": {"Ref": "InternetGateway"}
+            }
+        },
+        "RouteTable": {
+            "Type": "AWS::EC2::RouteTable",
+            "Properties": {
+                "VpcId" : { "Ref" : "MYVPC" },
+                "Tags": [{"Key": "Name", "Value": "myRouteTable"}]
+            }
+        },
+        "InternetRoute": {
+            "Type": "AWS::EC2::Route",
+            "DependsOn": "VPCGatewayAttachment",
+            "Properties": {
+                "RouteTableId": { "Ref": "RouteTable" },
+                "DestinationCidrBlock": "0.0.0.0/0",
+                "GatewayId": { "Ref": "InternetGateway" }
+            }
+        },
+        "Subnet1RouteTableAssociation": {
+            "Type": "AWS::EC2::SubnetRouteTableAssociation",
+            "Properties": {
+                "SubnetId": { "Ref": "PublicSubnet1" },
+                "RouteTableId": { "Ref": "RouteTable" }
+            }
+        },
+        "PublicSubnet1": {
+            "Type": "AWS::EC2::Subnet",
+            "Properties": {
+                "VpcId": {"Ref": "MYVPC"},
+                "CidrBlock": "10.64.0.0/20",
+                "AvailabilityZone": { "Fn::Select": [ 0, {"Fn::GetAZs": ""}]},
+                "MapPublicIpOnLaunch": true
+            }
+        },
+        "PublicSubnet2": {
+            "Type": "AWS::EC2::Subnet",
+            "Properties": {
+                "VpcId": {
+                    "Ref": "MYVPC"
+                },
+                "CidrBlock": "10.64.16.0/20",
+                "AvailabilityZone": { "Fn::Select": [ 1, {"Fn::GetAZs": ""}]},
+                "MapPublicIpOnLaunch": true
+            }
+        },
+        "PrivateSubnet1": {
+            "Type": "AWS::EC2::Subnet",
+            "Properties": {
+                "VpcId": {
+                    "Ref": "MYVPC"
+                },
+                "CidrBlock": "10.64.32.0/20",
+                "AvailabilityZone": { "Fn::Select": [ 2, {"Fn::GetAZs": ""}]},
+                "MapPublicIpOnLaunch": false
+            }
+        },
+        "PrivateSubnet2": {
+            "Type": "AWS::EC2::Subnet",
+            "Properties": {
+                "VpcId": {
+                    "Ref": "MYVPC"
+                },
+                "CidrBlock": "10.64.48.0/20",
+                "AvailabilityZone": { "Fn::Select": [ 3, {"Fn::GetAZs": ""}]},
+                "MapPublicIpOnLaunch": false
+            }
+        },
+        "SecGroup": {
+            "Type": "AWS::EC2::SecurityGroup",
+            "Properties": {
+                "GroupDescription": "Enable SSH and HTTP access via port 22 IPv4 & port 80 IPv4",
+                "GroupName": "MySecGroup",
+                "VpcId": { "Ref": "MYVPC" },
+                "SecurityGroupIngress": [
+                    {
+                        "Description": "Allow SSH IPv4 IN",
+                        "IpProtocol": "tcp",
+                        "FromPort": "22",
+                        "ToPort": "22",
+                        "CidrIp": "0.0.0.0/0"
+                    },
+                    {
+                        "Description": "Allow HTTP IPv4 IN",
+                        "IpProtocol": "tcp",
+                        "FromPort": "80",
+                        "ToPort": "80",
+                        "CidrIp": "0.0.0.0/0"
+                    },
+                    {
+                        "Description": "Allow HTTPS IPv4",
+                        "IpProtocol": "tcp",
+                        "FromPort": "443",
+                        "ToPort": "443",
+                        "CidrIp": "0.0.0.0/0"
+                    },
+                    {
+                        "Description": "Application port",
+                        "IpProtocol": "tcp",
+                        "FromPort": "3000",
+                        "ToPort": "3000",
+                        "CidrIp": "0.0.0.0/0"
+                    }
+                ]
+            }
+        }
+    },
+    "Outputs": {
+        "AZONES": {
+            "Description": "List of AZs",
+            "Value": { "Fn::Join": [ ", ", { "Fn::GetAZs": ""}]}
+        }
+    }
+}
